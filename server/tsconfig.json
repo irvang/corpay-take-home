@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2023",
+    "module": "commonjs",
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}
