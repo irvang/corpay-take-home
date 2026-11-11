@@ -1,17 +1,28 @@
 import express from 'express';
-import type { ErrorRequestHandler } from 'express';
+import type { ErrorRequestHandler, RequestHandler } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import { auth } from './auth';
 import { getInvoice, listAudit, listDemoUsers, listEvents, listInvoices } from './db/queries';
 import { decide } from './decide';
 
-export function createApp(db: DatabaseSync) {
+const logRequests: RequestHandler = (req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const user = res.locals.actor?.id ?? '-';
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms user=${user}`);
+  });
+  next();
+};
+
+export function createApp(db: DatabaseSync, options: { logRequests?: boolean } = {}) {
   const app = express();
+  if (options.logRequests) app.use(logRequests);
   app.use(express.json());
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
   });
+
   app.get('/api/demo-users', (_req, res) => {
     res.json(listDemoUsers(db));
   });
@@ -23,44 +34,67 @@ export function createApp(db: DatabaseSync) {
   });
 
   app.get('/api/invoices', (_req, res) => {
-    res.json(listInvoices(db, res.locals.actor));
+    res.json(listInvoices(db, res.locals.actor.companyId));
   });
 
   app.get('/api/audit', (_req, res) => {
     if (res.locals.actor.role !== 'admin') {
-      res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Only admins can view the audit log' } });
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Only admins can view the audit log',
+        },
+      });
       return;
     }
+
     res.json(listAudit(db, res.locals.actor.companyId));
   });
 
   app.get('/api/invoices/:id', (req, res) => {
     const id = Number(req.params.id);
-    const invoice = Number.isInteger(id) ? getInvoice(db, res.locals.actor.companyId, id) : undefined;
+    const invoice = getInvoice(db, res.locals.actor.companyId, id);
+
     if (!invoice) {
-      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Invoice not found' } });
+      res.status(404).json({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Invoice not found',
+        },
+      });
       return;
     }
-    res.json({ invoice, events: listEvents(db, res.locals.actor.companyId, id) });
+
+    res.json({
+      invoice,
+      events: listEvents(db, res.locals.actor.companyId, id),
+    });
   });
 
   app.post('/api/invoices/:id/decision', (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Invoice not found' } });
-      return;
-    }
-    const result = decide(db, res.locals.actor, id, req.body, req.get('Idempotency-Key'));
+    const result = decide(db, res.locals.actor, Number(req.params.id), req.body, req.get('Idempotency-Key'));
     res.status(result.status).json(result.body);
   });
 
   const onError: ErrorRequestHandler = (err, _req, res, _next) => {
     if (err.type === 'entity.parse.failed') {
-      res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Malformed JSON body' } });
+      res.status(400).json({
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'Malformed JSON body',
+        },
+      });
       return;
     }
-    res.status(500).json({ error: { code: 'INTERNAL', message: 'Internal server error' } });
+
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL',
+        message: 'Internal server error',
+      },
+    });
   };
+
   app.use(onError);
 
   return app;

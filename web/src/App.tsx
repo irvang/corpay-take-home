@@ -1,122 +1,99 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useCallback, useEffect, useState } from 'react';
+import { apiFetch } from './api.ts';
+import { AuditView } from './AuditView.tsx';
+import { InvoiceDetail } from './InvoiceDetail.tsx';
+import { InvoiceList } from './InvoiceList.tsx';
+import { UserPicker } from './UserPicker.tsx';
+import type { Actor, DemoUser, Invoice } from './types.ts';
+import './App.css';
+
+const STORAGE_KEY = 'demoUserId';
+
+function readStoredUserId(): number | null {
+  const value = Number(localStorage.getItem(STORAGE_KEY));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [users, setUsers] = useState<DemoUser[]>([]);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<number | null>(readStoredUserId);
+
+  useEffect(() => {
+    apiFetch<DemoUser[]>(null, '/api/demo-users').then(setUsers, (err: Error) => setUsersError(err.message));
+  }, []);
+
+  function switchUser(next: number | null) {
+    setUserId(next);
+
+    if (next === null) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, String(next));
+  }
+
+  return (
+    <main className="app">
+      <header className="topbar">
+        <h1>Invoice approvals</h1>
+        <UserPicker users={users} userId={userId} onChange={switchUser} />
+      </header>
+      {usersError && <p className="banner error">{usersError}</p>}
+      {userId === null ? <p>Pick a demo user to start.</p> : <Workspace key={userId} userId={userId} />}
+    </main>
+  );
+}
+
+function Workspace({ userId }: { userId: number }) {
+  const [me, setMe] = useState<Actor | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [tab, setTab] = useState<'invoices' | 'audit'>('invoices');
+  const [error, setError] = useState<string | null>(null);
+
+  const loadInvoices = useCallback(() => {
+    apiFetch<Invoice[]>(userId, '/api/invoices').then(setInvoices, (err: Error) => setError(err.message));
+  }, [userId]);
+
+  useEffect(() => {
+    apiFetch<Actor>(userId, '/api/me').then(setMe, (err: Error) => setError(err.message));
+    loadInvoices();
+  }, [userId, loadInvoices]);
+
+  if (error) return <p className="banner error">{error}</p>;
+  if (!me) return <p>Loading…</p>;
 
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      {me.role === 'admin' && (
+        <nav className="tabs">
+          <button type="button" aria-pressed={tab === 'invoices'} onClick={() => setTab('invoices')}>
+            Invoices
+          </button>
+          <button type="button" aria-pressed={tab === 'audit'} onClick={() => setTab('audit')}>
+            Audit
+          </button>
+        </nav>
+      )}
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      {tab === 'audit' ? (
+        <AuditView userId={userId} />
+      ) : (
+        <div className="columns">
+          <InvoiceList invoices={invoices} selectedId={selectedId} onSelect={setSelectedId} />
+          {selectedId === null ? (
+            <p>Select an invoice.</p>
+          ) : (
+            <InvoiceDetail
+              key={selectedId}
+              userId={userId}
+              role={me.role}
+              invoiceId={selectedId}
+              onChanged={loadInvoices}
+            />
+          )}
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+      )}
     </>
-  )
+  );
 }
 
-export default App
+export default App;

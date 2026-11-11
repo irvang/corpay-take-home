@@ -4,12 +4,18 @@ import { findUser } from './db/queries';
 
 export function auth(db: DatabaseSync): RequestHandler {
   return (req, res, next) => {
-    const id = Number(req.get('X-Demo-User'));
-    const actor = Number.isInteger(id) && id > 0 ? findUser(db, id) : undefined;
+    const actor = findUser(db, Number(req.get('X-Demo-User')));
+
     if (!actor) {
-      res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Missing or unknown X-Demo-User' } });
+      res.status(401).json({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Missing or unknown X-Demo-User',
+        },
+      });
       return;
     }
+
     res.locals.actor = actor;
     next();
   };

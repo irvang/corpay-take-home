@@ -3,17 +3,20 @@ import type { DatabaseSync } from 'node:sqlite';
 export function seed(db: DatabaseSync) {
   const insertCompany = db.prepare('INSERT INTO companies (name) VALUES (?)');
   const insertUser = db.prepare('INSERT INTO users (company_id, name, role) VALUES (?, ?, ?)');
+
   const insertInvoice = db.prepare(
-    "INSERT INTO invoices (company_id, vendor_name, total_minor_units, currency, due_date, status, version, submitted_by) VALUES (?, ?, ?, ?, ?, 'PENDING', 1, ?)",
+    "INSERT INTO invoices (company_id, vendor_name, total_minor_units, currency, due_date, status, submitted_by) VALUES (?, ?, ?, ?, ?, 'PENDING', ?)",
   );
 
   const company = (name: string, requester: string, approver: string, admin: string) => {
     const companyId = Number(insertCompany.run(name).lastInsertRowid);
+    const requesterId = Number(insertUser.run(companyId, requester, 'requester').lastInsertRowid);
+    const approverId = Number(insertUser.run(companyId, approver, 'approver').lastInsertRowid);
+    insertUser.run(companyId, admin, 'admin');
     return {
       companyId,
-      requesterId: Number(insertUser.run(companyId, requester, 'requester').lastInsertRowid),
-      approverId: Number(insertUser.run(companyId, approver, 'approver').lastInsertRowid),
-      adminId: Number(insertUser.run(companyId, admin, 'admin').lastInsertRowid),
+      requesterId,
+      approverId,
       invoiceIds: [] as number[],
     };
   };
@@ -31,9 +34,15 @@ export function seed(db: DatabaseSync) {
     [northwind, 'Pinecrest Janitorial', 34999, 'USD', '2026-12-11'],
     [bluefin, 'Tidewater Dock Rentals', 1500000, 'USD', '2026-12-15'],
   ];
+
   for (const [c, vendor, minorUnits, currency, dueDate] of invoices) {
-    c.invoiceIds.push(Number(insertInvoice.run(c.companyId, vendor, minorUnits, currency, dueDate, c.requesterId).lastInsertRowid));
+    c.invoiceIds.push(
+      Number(insertInvoice.run(c.companyId, vendor, minorUnits, currency, dueDate, c.requesterId).lastInsertRowid),
+    );
   }
 
-  return { northwind, bluefin };
+  return {
+    northwind,
+    bluefin,
+  };
 }

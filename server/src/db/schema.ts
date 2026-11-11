@@ -37,7 +37,6 @@ CREATE TABLE approval_events (
 CREATE TABLE idempotency_keys (
   actor_id INTEGER NOT NULL,
   key TEXT NOT NULL,
-  company_id INTEGER NOT NULL,
   request_hash TEXT NOT NULL,
   response_status INTEGER NOT NULL,
   response_body TEXT NOT NULL,
